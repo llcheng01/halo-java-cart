@@ -3,7 +3,6 @@ package hautelook;
 /**
  * Make immutable
  *
- * Created by johnnycheng on 8/30/17.
  */
 public final class Item {
     private final String name;
