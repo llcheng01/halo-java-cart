@@ -1,34 +1,28 @@
 package hautelook;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Created by bill on 4/10/17.
- */
+//TODO need to be easily Extendable
+// Internationalization?
 public class Cart {
     private static final double INITIAL_CART_SUBTOTAL = 0.0;
     private static final double DEFAULT_COUPON_VALUE = 0.0;
     private static final int INITIAL_CART_WEIGHT = 0;
     private static final int FLAT_SHIPPING_RATE = 5;
-    private static final int PER_ITEM_SHIPPING_RATE = 20;
+    private static final double STANDARD_SHIPPING_RATE = 20.00;
+    private static final double FREE_SHIPPING_AMOUNT = 100.00;
 
     // Synchronzied these
     private List<Item> items;
-    private double subTotal;
-    private double total;
     private double coupon;
-    private int totalWeight;
 
     public Cart() {
         // Intialize to Arraylist to take advantage of auto sizing
         // and stream
         items = new ArrayList<>();
-        subTotal = INITIAL_CART_SUBTOTAL;
         coupon = DEFAULT_COUPON_VALUE;
-        totalWeight = INITIAL_CART_WEIGHT;
     }
 
     /**
@@ -42,7 +36,6 @@ public class Cart {
 
         double sumTotal = sumItemPrice();
         sumTotal = coupon != DEFAULT_COUPON_VALUE  ? sumTotal * coupon  : sumTotal;
-        setSubTotal(sumTotal);
 
         return sumTotal;
     }
@@ -52,10 +45,27 @@ public class Cart {
      * @return double
      */
     public double total() {
-        double subTotal = subtotal();
-        int sumWeight = sumTotalWeight();
-        // Do this to ignore shipping rate for item with zero weight input
-        double total = sumWeight > INITIAL_CART_WEIGHT ? subTotal + FLAT_SHIPPING_RATE : subTotal;
+        // 1. if freeShipping is true, all items are under 10 lbs AND subtotal is OVER $100.00
+        // 2. if freeShipping is false
+        // 3. all items is under 10 lbs, subtotal is under 100.00, flat rate
+        // 4. all items is not under 10 lbs, shipping rate is standard per item
+
+        final double subTotal = subtotal();
+        final int count = countOverWeightItems();
+
+        final boolean freeShipping = isFreeShipping(subTotal, count);
+        if (freeShipping)
+            return subTotal;
+
+        final boolean flatRate  = isFlateRateShipping(subTotal, count);
+
+        double shippingCost = 0;
+        if (flatRate)
+            shippingCost += FLAT_SHIPPING_RATE;
+
+        shippingCost += standardShippingCost(count);
+
+        final double total = subTotal + shippingCost;
         return total;
     }
 
@@ -66,6 +76,8 @@ public class Cart {
     }
 
     public int getQuantityByName(final String name) {
+        if (items.isEmpty())
+            return items.size();
         // count item by item.name
         List<Item> quantity = items.stream().filter((i) -> name.equalsIgnoreCase(i.getName())).collect(Collectors.toList());
         return quantity.size();
@@ -75,11 +87,10 @@ public class Cart {
          setCoupon((100.00 - couponValue) / 100.00);
     }
 
-    public int size() {
-        return items.size();
-    }
-
     private double sumItemPrice() {
+        if (items.isEmpty())
+            return INITIAL_CART_SUBTOTAL;
+
         double sumTotal = items.stream().reduce(INITIAL_CART_SUBTOTAL, (sum, i) -> sum += i
                         .getPrice()
                 , (sum1, sum2) -> sum1 + sum2 );
@@ -87,23 +98,48 @@ public class Cart {
     }
 
     private int sumTotalWeight() {
+        if (items.isEmpty())
+            return 0;
+
         int weight = items.stream().reduce(INITIAL_CART_WEIGHT, (sum, i) -> sum += i.getWeight()
                 , (sum1, sum2) -> sum1 + sum2 );
-        setTotalWeight(weight);
         return weight;
+    }
+
+    // Find items over 10 pounds and multiple standard shipping cost
+    private int countOverWeightItems() {
+        if (items.isEmpty())
+            return 0;
+        // for each item over 10 lbs add 20 sum
+        List<Item> overWeightItems = items.stream().filter((i) -> i.getWeight() >= 10).collect
+                (Collectors.toList());
+
+        return overWeightItems.size();
+    }
+
+    private double standardShippingCost(final int overWeightItemsCount) {
+        final double shippingCost = overWeightItemsCount == 0.0 ? 0.0 : overWeightItemsCount *
+                STANDARD_SHIPPING_RATE;
+        return shippingCost;
+    }
+
+    private boolean isFreeShipping(final double subTotal, final int overWeightItemsCount) {
+        // order is $100 or more, and each individual item is under 10 lb
+        final boolean free = (subTotal > FREE_SHIPPING_AMOUNT && overWeightItemsCount == 0);
+        return free;
+    }
+
+    private boolean isFlateRateShipping(final double subTotal, final int overWeightItemsCount) {
+        // order is under $100, and all items are 10 lb or more
+        final boolean flateRate = (subTotal < FREE_SHIPPING_AMOUNT && overWeightItemsCount !=
+                items.size());
+        return flateRate;
     }
 
     private synchronized void setCoupon(double value) {
         coupon = value;
     }
 
-    private synchronized void setTotalWeight(int weight) {
-        totalWeight = weight;
-    }
-
-    private synchronized void setSubTotal(double subTotal) {
-        subTotal = subTotal;
-    }
 
     private boolean isEmpty() {
         return items.isEmpty();
